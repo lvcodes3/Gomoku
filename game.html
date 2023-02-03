@@ -1,0 +1,972 @@
+<!-- Change file to .php and uncomment the code below to run with a database-->
+<!--
+    <?php
+        // Initialize the session
+        session_start();
+        
+        // If session variable is not set it will redirect to login page
+        if(!isset($_SESSION['username']) || empty($_SESSION['username'])){
+            //header("location: login_mysql.php");
+            //exit;
+            $_SESSION['temporary'] = "player1";
+        }
+        if(isset($_SESSION['username'])){
+            $_SESSION['temporary'] = $_SESSION['username'];
+        } 
+    ?>
+-->
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Gomoku</title>
+        <style>
+            body{
+                background-color: orange;
+                font-family: cursive;
+            }
+            #gameWindow{
+                text-align: center;
+                max-width: 1300px;
+                margin: auto;
+            }
+            #section0{
+                margin: auto; 
+            }
+            #misc{
+                float: left;
+            }
+            table{
+                border-collapse: collapse;
+                table-layout: fixed;
+                margin: auto;
+            }
+            td{
+                /*uncomment to show interactive grid*/
+                /*border: 1px solid black;*/
+                width: 48px;
+                height: 48px;   
+            }
+            img{
+                width: 47px!important;
+                height: 40px!important;
+                padding: 0;
+                margin: 0; 
+                border: 0;
+            }
+            h1{
+                text-align: center;
+            }
+            #section1{
+                text-align: center;
+            }
+            .turns{
+                display: inline;
+            }
+            .timer{
+                display: inline;
+            }
+        </style>
+    </head>
+    <body onload="script()"> 
+        <div id="gameWindow">
+            <!--Will display who wins & options from there-->
+            <div id="resultSection">
+                <h1>Gomoku</h1>
+                <h1 id="results"></h1>
+            </div>
+
+            <!--Will contain player turn indicator, number of turns, timer of game-->
+            <div id="misc">
+                <h4 id = "player1color">Player 1</h4>                   <!--<?php echo $_SESSION['temporary'];?>-->
+                <h4 id = "player2color">Player 2</h4>
+                <h4 class="turns">Number of Turns:</h4>
+                <h4 class="turns" id="numTurns"></h4>
+                <br><br>
+                <h4 class="timer">Timer:</h4>
+                <h4 class="timer" id="minutes">00</h4>:
+                <h4 class="timer" id="seconds">00</h4>
+            </div>
+
+            <!--Will contain the game board (table)-->
+            <div id="section0">
+
+            </div>
+
+            <!--Will contain the restart button-->
+            <div id="section1">
+                <br>
+                <a id="mainMenu" href="index.html" hidden><h3>Go back to Main Menu!</h3></a>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            //Checking if user is logged in & client side inputs are correct
+            let boardSize = window.prompt("Enter 15 or 19 for the game board size.");
+            if(boardSize == null){
+                window.location.href = "./index.html";
+            }
+            else if((boardSize != 15) && (boardSize != 19)){
+                window.location.href = "./index.html";
+                alert("15 or 19 only.");
+            }
+            /* for php only
+            let username = document.getElementById("player1color").innerHTML;
+            if(username == "player1"){
+                window.location.href = "./index.html";
+                alert("You must be logged in to play!");
+            }
+            */
+
+            //counter of turns -> stored in database
+            let numOfTurns = 0;
+
+            //playerTurn = 1 (logged in player)
+            //playerTurn = 2 (player2, not logged in player)
+            let playerTurn = 1; 
+
+            //true size of interactive grid (invisible / in background)
+            const BOARD_LENGTH = boardSize - 1;
+
+            //1d array of object Tiles
+            let board = [];
+
+            //Clock portion
+            var sec = 0;
+            let pad = (val) =>{
+                return val > 9 ? val : "0" + val;
+            }
+            var timer = setInterval( function(){
+                document.getElementById("seconds").innerHTML=pad(++sec%60);
+                document.getElementById("minutes").innerHTML=pad(parseInt(sec/60,10));
+            }, 1000);
+
+            //CLASS to store into a 1d array of tiles
+            //provides index(tileId) 0 -> BOARD_LENGTH*BOARD_LENGTH
+            //x and y position, & selected (has been clicked on: true or false)
+            //represents a single block in the grid/table
+            class Tile{
+                constructor(tileId, x, y){
+                    this.id = tileId;
+                    this.x = x;
+                    this.y = y;
+                    this.selected = false;
+                    this.player = 0;
+                }
+            }
+
+            //creating the interactive board
+            let interactiveBoard = () =>{
+               //creates a 1d array filled of Object Tiles 
+               // board[Tile, Tile, .... , Tile];
+               //Tiles will be initialized with an index 0-BOARD_LENGTH, and an xpos, and ypos
+                let index = 0;
+                for (let i = 0; i < BOARD_LENGTH; i++) {
+                    for (let j = 0; j < BOARD_LENGTH; j++) {
+                        board.push(new Tile(index++, i, j));
+                    }
+                }
+            }
+            
+            //creating the game board based on the user-input boardSize
+            let createBoard = (boardSize) =>{
+                //adding player visual effects
+                document.getElementById("player1color").style.color = "green";
+                document.getElementById("player2color").style.color = "red";
+                document.getElementById("numTurns").innerText = " " + numOfTurns;
+
+                //creates the invisible table cells
+                if(BOARD_LENGTH == 14){
+                    boardSize = 14;
+                    //setting the styling for the background image
+                    document.getElementById("section0").style.backgroundImage = "url(\"./resources/15x15pattern.png\")";
+                    document.getElementById("section0").style.width = "754px";
+                    document.getElementById("section0").style.height = "732px";
+                    document.getElementById("section0").style.paddingTop = "20px";
+                }else if(BOARD_LENGTH == 18){
+                    boardSize = 18;
+                    //setting the styling for the background image
+                    document.getElementById("section0").style.backgroundImage = "url(\"./resources/19x19pattern.png\")";
+                    document.getElementById("section0").style.width = "954px";
+                    document.getElementById("section0").style.height = "932px";
+                    document.getElementById("section0").style.paddingTop = "20px";
+                }
+
+                //html table representing the gameboard
+                let html = "<table id=\"gameBoard\">";
+                let counter = 0;
+                for(let i = 0; i < boardSize; i++) {
+                    html += "<tr>";
+                    
+                    for(let j = 0; j < boardSize; j++){
+                        html += "<td onclick=\"gameUpdateMove(id)\" id=" + counter + "></td>";
+                        counter++;
+                    }
+
+                    html += "</tr>";
+                }
+                html += "</table>";
+                document.getElementById("section0").innerHTML = html;
+
+                interactiveBoard();
+            }
+
+            //Every cell that is clicked on will be stored as 'selected'
+            //playerTurn will automatically change after visual display is applied
+            let gameUpdateMove = (cellId) =>{
+                let cellIndex = parseInt(cellId);
+                
+                //checking if cell was already selected
+                if(board[cellIndex].selected){
+                    alert("You can't click there.");
+                    return;
+                }
+
+                //checking if all cells are selected = DRAW
+                let selectedCounter = 0;
+                for(let i = 0; i < BOARD_LENGTH * BOARD_LENGTH; i++){
+                    if(board[i].selected){
+                        selectedCounter++;
+                    }
+                }
+                if(selectedCounter == BOARD_LENGTH * BOARD_LENGTH){
+                    //draw
+                    displayWinner("Draw");
+                }
+
+                //checking player turn
+                if (playerTurn == 1){
+                    document.getElementById(cellId).innerHTML = "<img src=\"./resources/player1.jpeg\"/>";
+                    document.getElementById("player2color").style.color = "green";
+                    document.getElementById("player1color").style.color = "red";
+                    //setting Tile (cellId) selected to be true
+                    //setting Tile (cellId) player to be either 1 for player1 or 2 for player2
+                    board[cellIndex].selected = true;
+                    board[cellIndex].player = playerTurn;
+                    numOfTurns++;
+                    document.getElementById("numTurns").innerText = numOfTurns;
+                    playerTurn = 2;
+                }
+                else {
+                    document.getElementById(cellId).innerHTML = "<img src=\"./resources/player2.png\"/>";
+                    document.getElementById("player1color").style.color = "green";
+                    document.getElementById("player2color").style.color = "red";
+                    //setting Tile (cellId) selected to be true
+                    //setting Tile (cellId) player to be either 1 for player1 or 2 for player2
+                    board[cellIndex].selected = true;
+                    board[cellIndex].player = playerTurn;
+                    numOfTurns++;
+                    document.getElementById("numTurns").innerText = numOfTurns;
+                    playerTurn = 1;
+                }
+
+                gameStatus();
+            }
+
+            /*
+            HORIZONTAL, VERTICAL, AND DIAGONAL CHECKING
+            After a move is made and displayed in the browser, we will then loop through our
+            board array and check on the position and player property to make sure that 
+            neither player has won the game yet. If a player has won the game it will call the
+            displayWinner function.
+            */
+            let checkHorizontal = () =>{
+                if(BOARD_LENGTH == 14){
+                    //each for loop checks row by row (looking for a shorter code way)
+                    for(let i = 0; i < 10; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 14; i < 24; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 28; i < 38; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 42; i < 52; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 56; i < 66; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 70; i < 80; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 84; i < 94; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 98; i < 108; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 112; i < 122; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 126; i < 136; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 140; i < 150; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 154; i < 164; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 168; i < 178; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 182; i < 192; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    //this commented code has a bug due to the dimension of the 1d array
+                    /*
+                    for(let i = 0; i < 192; i++){
+                            let j = i + 1;
+                            let k = i + 2;
+                            let l = i + 3;
+                            let m = i + 4;
+                            if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                                displayWinner(1);
+                                break;
+                            }
+                            else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                                displayWinner(2);
+                                break;
+                            }
+                        
+                    }
+                    */
+                }else{//BOARD_LENGTH = 18
+                    for(let i = 0; i < 14; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 18; i < 32; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 36; i < 50; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 54; i < 68; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 72; i < 86; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 90; i < 104; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 108; i < 122; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 126; i < 140; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 144; i < 158; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 162; i < 176; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 180; i < 194; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 198; i < 212; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 216; i < 230; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 234; i < 248; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 252; i < 266; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 270; i < 284; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 288; i < 302; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    for(let i = 306; i < 320; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    //this commented code has a bug due to the dimension of the 1d array
+                    /*
+                    for(let i = 0; i < 320; i++){
+                        let j = i + 1;
+                        let k = i + 2;
+                        let l = i + 3;
+                        let m = i + 4;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                    */
+                }
+            }
+
+            let checkVertical = () =>{
+                if(BOARD_LENGTH == 14){
+                    for(let i = 0; i < 140; i++){
+                        let j = i + 14;
+                        let k = i + 28;
+                        let l = i + 42;
+                        let m = i + 56;
+                        
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                }else{
+                    for(let i = 0; i < 252; i++){
+                        let j = i + 18;
+                        let k = i + 36;
+                        let l = i + 54;
+                        let m = i + 72;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let checkDiagonalLeftRight = () =>{
+                if(BOARD_LENGTH == 14){
+                    for(let i = 0; i < 136; i++){
+                        let j = i + 15;
+                        let k = i + 30;
+                        let l = i + 45;
+                        let m = i + 60;
+                        
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                }else{
+                    for(let i = 0; i < 248; i++){
+                        let j = i + 19;
+                        let k = i + 38;
+                        let l = i + 57;
+                        let m = i + 76;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let checkDiagonalRightLeft = () =>{
+                if(BOARD_LENGTH == 14){
+                    for(let i = 4; i < 140; i++){
+                        let j = i + 13;
+                        let k = i + 26;
+                        let l = i + 39;
+                        let m = i + 52;
+                        
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                }else{
+                    for(let i = 4; i < 252; i++){
+                        let j = i + 17;
+                        let k = i + 34;
+                        let l = i + 51;
+                        let m = i + 68;
+                        if((board[i].player == 1) && (board[j].player == 1) && (board[k].player == 1) && (board[l].player == 1) && (board[m].player == 1)){
+                            displayWinner(1);
+                            break;
+                        }
+                        else if((board[i].player == 2) && (board[j].player == 2) && (board[k].player == 2) && (board[l].player == 2) && (board[m].player == 2)){
+                            displayWinner(2);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let gameStatus = () =>{
+                checkHorizontal();
+                checkVertical();
+                checkDiagonalLeftRight();
+                checkDiagonalRightLeft();
+            }
+
+            //client -> server
+            let savePlayerStats = () =>{
+                //array to hold data from client side
+                let mydata = [];
+
+                //pushing in username
+                let user = document.getElementById("player1color").innerHTML;
+                mydata.push(user);
+
+                //pushing in score
+                mydata.push(numOfTurns);
+
+                //pushing in game win/lose/draw result
+                if(playerTurn == 1){
+                    //logged in player lost
+                    mydata.push("lose");
+                }
+                else if(playerTurn == 2){
+                    //logged in player won
+                    mydata.push("win");
+                }
+                else{
+                    mydata.push("draw");
+                }
+                
+                //pushing in board size
+                mydata.push(boardSize);
+
+                //pushing in timer
+                let min = document.getElementById("minutes").innerHTML;
+                let sec = document.getElementById("seconds").innerHTML;
+                let time = min + ":" + sec;
+                mydata.push(time);
+
+                //mydata now contains valuable game information
+                //now send it to savescore_mysql.php
+                let data = JSON.stringify(mydata);
+
+                var XML = new XMLHttpRequest();
+                if (!XML) {
+                  alert('Cannot create an XMLHTTP instance');
+                  return false;
+                }
+                XML.open('POST', 'savescore_mysql.php');
+                XML.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+                XML.send('mynewdata=' + data); 
+
+                XML.onload = function(){
+                    //alert(XML.response);
+
+                    //string -> object
+                    //let result = JSON.parse(XML.response);
+                    //alert(result);
+                };
+
+                XML.onerror = function() { // only triggers if the request couldn't be made at all
+                    alert(`Network Error`);
+                };
+            }
+
+            let resetGame = () =>{
+                //updating interactive board -> no more clicking
+                for(let i = 0; i < BOARD_LENGTH * BOARD_LENGTH; i++){
+                    document.getElementById(i).onclick = "";
+                }
+
+                //stopping the timer
+                clearInterval(timer);
+            }
+
+            let displayWinner = (player = "Draw") =>{
+                if(player == "Draw"){
+                    playerTurn == 0;
+                    document.getElementById("results").innerText = "This game is a " + player + ".";
+                    document.getElementById("mainMenu").hidden = false;
+                    resetGame();
+
+                }
+                else if(player == 1){
+                    let username = document.getElementById("player1color").innerHTML;
+                    document.getElementById("results").innerText = username + " wins the game!";
+                    document.getElementById("mainMenu").hidden = false;
+                    resetGame();
+                }
+                else if(player == 2){
+                    document.getElementById("results").innerText = "Player " + player + " wins the game!";
+                    document.getElementById("mainMenu").hidden = false;
+                    resetGame();
+                }
+
+                //savePlayerStats(); // for php only
+            }
+
+            //DRIVER
+            createBoard(boardSize);
+        </script>
+    </body>
+</html>
